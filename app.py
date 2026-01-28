@@ -88,8 +88,9 @@ else:
 # --- 5. ADMIN RESET CONTROLS ---
 st.markdown("---")
 with st.expander("🔐 Admin Controls (Reset & Data Collection)"):
+    # Updated Password
     pw = st.text_input("Enter Admin Password", type="password")
-    if pw == "admin123":
+    if pw == "Harish@1989#":
         st.write("### Trip Management")
         st.info("Resetting a vehicle will clear its seat list to allow a fresh round of 6 bookings.")
         

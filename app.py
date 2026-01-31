@@ -4,13 +4,17 @@ from datetime import datetime, timedelta
 
 # --- CONFIG ---
 st.set_page_config(page_title="P&C CHO Vehicle Portal", layout="wide")
+
+# --- BRANDING: RIL LOGO ---
+# Using a standard RIL logo URL for the header
+st.image("https://upload.wikimedia.org/wikipedia/en/thumb/9/99/Reliance_Industries_Logo.svg/1200px-Reliance_Industries_Logo.svg.png", width=200)
 st.title("🚗 P&C - CHO Departmental Vehicle Portal")
 st.markdown("#### Reliance Industries Limited - Jamnagar Refinery")
 
 # --- 1. SHARED DATABASE ---
 @st.cache_resource
 def get_global_database():
-    # Central storage for all department travel records
+    # Central storage shared across all office devices
     return pd.DataFrame(columns=["Date", "Trip Category", "Car", "Name", "Destination", "Time", "Contact"])
 
 df_shared = get_global_database()
@@ -33,24 +37,10 @@ staff_list = sorted(list(set([
     "Jignesh Shah", "Pradip Karia"
 ])))
 
-# --- 3. WEEKLY ROSTER VIEW ---
-st.subheader("📅 Weekly Trip Roster")
-today = datetime.now().date()
-# Generate Monday-Saturday dates for the current week
-roster_dates = [today + timedelta(days=i) for i in range(7) if (today + timedelta(days=i)).weekday() < 6]
-roster_data = []
-
-for d in roster_dates:
-    d_str = str(d)
-    e1_count = len(df_shared[(df_shared['Car'] == "Ertiga 1") & (df_shared['Date'] == d_str)])
-    e2_count = len(df_shared[(df_shared['Car'] == "Ertiga 2") & (df_shared['Date'] == d_str)])
-    roster_data.append({"Day": d.strftime("%A"), "Date": d_str, "Ertiga 1 Bookings": e1_count, "Ertiga 2 Bookings": e2_count})
-
-st.table(pd.DataFrame(roster_data))
-
-# --- 4. BOOKING ENGINE ---
-st.divider()
+# --- 3. BOOKING ENGINE (AT TOP) ---
 st.subheader("📝 New Booking")
+today = datetime.now().date()
+roster_dates = [today + timedelta(days=i) for i in range(7) if (today + timedelta(days=i)).weekday() < 6]
 
 col1, col2 = st.columns(2)
 
@@ -64,16 +54,11 @@ with col2:
     else:
         travel_date = st.date_input("Travel Date", today)
 
-# Validation for Evening Trip (Post 7 PM)
-evening_valid = True
-if trip_type == "Evening Late Sitting Trip":
-    st.info("Note: Evening pool trips are only available for departures post 07:00 PM.")
-
 # Occupancy Check
 car_day_bookings = df_shared[(df_shared['Car'] == selected_car) & (df_shared['Date'] == str(travel_date))]
 if len(car_day_bookings) >= 6:
     st.error(f"🚫 {selected_car} is FULL for {travel_date}.")
-    st.warning("⚠️ Contact Admin: **Samir Doshi (+91 90333 29720)**.")
+    st.warning("⚠️ Contact Admin: **Samir Doshi (+91 90333 29720)** for arrangements.")
 else:
     with st.form("booking_form", clear_on_submit=True):
         c_a, c_b = st.columns(2)
@@ -85,28 +70,46 @@ else:
             dest = st.text_input("Destination*")
             
         if st.form_submit_button("Confirm Booking"):
-            # Time check for evening trip
+            # Evening Time Constraint
             if trip_type == "Evening Late Sitting Trip" and time_val < datetime.strptime("19:00", "%H:%M").time():
                 st.error("Evening pool trips must start at or after 07:00 PM.")
             elif not contact or not dest:
                 st.error("Please fill all mandatory fields (*).")
             else:
-                new_data = [str(travel_date), trip_type, selected_car, p_name, dest, time_val.strftime("%H:%M"), contact]
-                df_shared.loc[len(df_shared)] = new_data
-                st.success(f"Successfully booked {selected_car} for {p_name}!")
+                new_row = [str(travel_date), trip_type, selected_car, p_name, dest, time_val.strftime("%H:%M"), contact]
+                df_shared.loc[len(df_shared)] = new_row
+                st.success(f"Booking confirmed for {p_name}!")
                 st.rerun()
 
-# --- 5. DEPARTMENTAL MANIFEST ---
+# --- 4. LIVE MANIFEST ---
 st.divider()
 st.subheader("📊 Live Travel Manifest")
 view_date = st.date_input("View manifest for date:", today)
 st.dataframe(df_shared[df_shared['Date'] == str(view_date)], use_container_width=True)
 
+# --- 5. WEEKLY ROSTER VIEW (AT BOTTOM) ---
+st.divider()
+st.subheader("📅 Weekly Trip Roster")
+roster_data = []
+
+for d in roster_dates:
+    d_str = str(d)
+    e1_count = len(df_shared[(df_shared['Car'] == "Ertiga 1") & (df_shared['Date'] == d_str)])
+    e2_count = len(df_shared[(df_shared['Car'] == "Ertiga 2") & (df_shared['Date'] == d_str)])
+    roster_data.append({
+        "Day": d.strftime("%A"), 
+        "Date": d_str, 
+        "Ertiga 1 (Booked/6)": f"{e1_count}/6", 
+        "Ertiga 2 (Booked/6)": f"{e2_count}/6"
+    })
+
+st.table(pd.DataFrame(roster_data))
+
 # --- 6. ADMIN PORTAL ---
 with st.expander("🔐 Admin Controls"):
     if st.text_input("Admin Password", type="password") == "Harish@1989#":
-        if st.button("Clear All Data"):
+        if st.button("Clear All Global History"):
             df_shared.drop(df_shared.index, inplace=True)
             st.rerun()
         csv = df_shared.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Master Excel", csv, "PC_CHO_Travel_Log.csv")
+        st.download_button("📥 Download Master Record", csv, "CHO_P&C_Vehicle_Logs.csv")

@@ -1,113 +1,120 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- CONFIG ---
-st.set_page_config(page_title="Dept Vehicle Booking", layout="wide")
-st.title("📂 Departmental Vehicle Booking")
+st.set_page_config(page_title="P&C CHO Vehicle Portal", layout="wide")
+st.title("🚗 P&C - CHO Departmental Vehicle Portal")
+st.markdown("#### Reliance Industries Limited - Jamnagar Refinery")
 
 # --- 1. SHARED DATABASE ---
 @st.cache_resource
 def get_global_database():
-    # Global storage shared across all office devices
-    return pd.DataFrame(columns=["Date", "Car", "Seat", "Name", "ID", "Destination", "Time", "Contact"])
+    return pd.DataFrame(columns=["Date", "Trip Category", "Car", "Name", "Destination", "Time", "Contact"])
 
 df_shared = get_global_database()
 
-# --- 2. SIDEBAR STATUS ---
-st.sidebar.header("🚖 Real-Time Status")
-sidebar_date = st.sidebar.date_input("Check occupancy for:", datetime.now().date())
+# --- 2. STAFF DIRECTORY (Cleaned List) ---
+staff_list = sorted(list(set([
+    "Akhil Kotadiya", "Akshay Saxena", "Alpesh5 Patel", "Bhargavkumar S", "Darshit Beladiya", 
+    "Disha Sutariya", "Ghanshyam Dapkara", "Harish19 Sharma", "Hiral1 Trivedi", "Jaivik Shinde", 
+    "Jay25 Patel", "Jigar1 Darji", "Jignesh Vador", "Jinal Desai", "Karan12 Patel", "Mayank14 Patel", 
+    "Mixip Patel", "Nischal Ghosh", "Parthiv Bhatt", "Piyush Hirpara", "Pranjal Asati", "Pratik Lodhari", 
+    "Rajesh6 Panchal", "Ramdevsinh Gohil", "Rasesh Vashi", "Ravi Desai", "Rohit21 Thakur", 
+    "Roshan3 Shah", "Rut Bhatt", "Sagar Bhuva", "Samir R Doshi", "Sanju Mertia", "Shraddha1 V", 
+    "Shreyansh Shah", "Tej Desai", "Vishal Buddh", "Vishal17 Shah", "Vivek1 Mehta", "Yash Popat", 
+    "Yash1 Mistry", "Yashvi Vadwala", "Akhil Shandilya", "Hasmukh Morasiya", "Pankaj8 Pathak", 
+    "Damu Shrao", "Chirag Bhavsar", "Bhargav Vachhani", "Nikunj K Patel", "Jigar3 Vyas", 
+    "Anil K. Saklani", "Vishal Sutariya", "Dinesh3 Shinde", "Manish1 Tawade", "Gireesh Sagi", 
+    "Karthikeyan10 K", "Sudheer Atmakur", "Anjani11 Kumar", "Sankaranarayanan A", "Mangesh Gawhale", 
+    "Jagdish Charan", "Vaibhav Mahoday", "Muralikrishna T", "Chhunnulal2 Gupta", "Yogesh P Sonawane", 
+    "Mahesh Bhaskar", "Rodi1 Choubisa", "Ketan Padh", "Samip Trivedi", "Manishkumar K", 
+    "Upamanyu Mehta", "Jignesh Shah", "Pradip Karia"
+])))
 
-drivers = {"Ertiga 1": "Rajesh (+91 98XXX-XXXXX)", "Ertiga 2": "Suresh (+91 97XXX-XXXXX)"}
+# --- 3. LOGIN & DASHBOARD ---
+st.sidebar.header("👤 User Dashboard")
+user_name = st.sidebar.selectbox("Select Your Name to Login", ["--- Guest ---"] + staff_list)
 
-# Track which cars are full for the selected sidebar date
-full_cars = []
-
-for car, info in drivers.items():
-    car_df = df_shared[(df_shared['Car'] == car) & (df_shared['Date'] == str(sidebar_date))]
-    occ = len(car_df)
+if user_name != "--- Guest ---":
+    st.sidebar.success(f"Welcome, {user_name}")
+    user_bookings = df_shared[df_shared['Name'] == user_name]
     
-    if occ >= 6:
-        full_cars.append(car)
+    st.sidebar.subheader("My Upcoming Trips")
+    if not user_bookings.empty:
+        st.sidebar.dataframe(user_bookings[["Date", "Trip Category", "Time"]], hide_index=True)
+    else:
+        st.sidebar.write("No active bookings found.")
+
+# --- 4. BOOKING ENGINE ---
+st.subheader("📝 Book a Vehicle")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    trip_type = st.radio("Trip Category", ["Morning Pool Trip", "Evening Late Sitting Trip", "Random Office Booking"])
+    selected_car = st.selectbox("Select Car", ["Ertiga 1", "Ertiga 2"])
     
-    st.sidebar.subheader(f"{car}")
-    st.sidebar.write(f"👤 {info}")
-    st.sidebar.progress(min(occ / 6, 1.0))
-    st.sidebar.write(f"💺 Occupied: {occ}/6")
-    st.sidebar.markdown("---")
+with col2:
+    if trip_type == "Morning Pool Trip":
+        # Allow booking for upcoming week (Mon-Sat)
+        today = datetime.now().date()
+        next_week = [today + timedelta(days=i) for i in range(7) if (today + timedelta(days=i)).weekday() < 6]
+        travel_date = st.selectbox("Select Date (Mon-Sat)", next_week)
+    else:
+        travel_date = st.date_input("Travel Date", datetime.now().date())
 
-# --- 3. BOOKING FORM ---
-st.subheader("➕ Make a New Booking")
-car_choice = st.selectbox("1. Select Vehicle*", ["--- Select Vehicle ---", "Ertiga 1", "Ertiga 2"])
+# Occupancy Check
+car_day_bookings = df_shared[(df_shared['Car'] == selected_car) & (df_shared['Date'] == str(travel_date))]
+occ = len(car_day_bookings)
 
-# Check if selected car is full
-if car_choice in full_cars:
-    st.error(f"🚫 {car_choice} is FULLY BOOKED.")
-    st.warning("⚠️ Please contact Admin: **Samir Doshi (+91 90333 29720)** for arranging another vehicle as this is booked.")
+if occ >= 6:
+    st.error(f"🚫 {selected_car} is FULL.")
+    st.warning("⚠️ Contact Admin: **Samir Doshi (+91 90333 29720)** for arrangements.")
 else:
-    all_seats = ["Front", "Middle Left", "Middle Center", "Middle Right", "Rear Left", "Rear Right"]
-    available_seats = []
-
-    if car_choice != "--- Select Vehicle ---":
-        # Check bookings for the travel date entered in the form
-        current_date_str = datetime.now().strftime('%Y-%m-%d')
-        booked_seats = df_shared[(df_shared['Car'] == car_choice) & (df_shared['Date'] == current_date_str)]['Seat'].tolist()
-        available_seats = [s for s in all_seats if s not in booked_seats]
-
-    with st.form("booking_form", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            date_val = st.date_input("Travel Date*", datetime.now().date())
-            req_name = st.text_input("Name*")
-            req_id = st.text_input("Employee ID*")
-        with c2:
-            seat = st.selectbox("2. Seat Preference*", available_seats if available_seats else ["Select Vehicle First"])
-            mobile = st.text_input("Mobile No.*")
-            time = st.time_input("Departure Time*")
-        
-        dest = st.text_input("Drop Location*")
-        submit = st.form_submit_button("Confirm Booking")
-
-        if submit:
-            if car_choice == "--- Select Vehicle ---" or not req_name or not dest:
-                st.error("Please fill all mandatory fields.")
+    with st.form("main_booking_form", clear_on_submit=True):
+        c_a, c_b = st.columns(2)
+        with c_a:
+            name_confirm = st.selectbox("Confirm Your Name*", staff_list)
+            contact = st.text_input("Mobile Number*")
+        with c_b:
+            time_val = st.time_input("Preferred Time", datetime.now().time())
+            dest = st.text_input("Destination/Drop Point*")
+            
+        if st.form_submit_button("Confirm My Booking"):
+            if not contact or not dest:
+                st.error("Please provide Mobile No. and Destination.")
             else:
-                new_idx = len(df_shared)
-                df_shared.loc[new_idx] = [str(date_val), car_choice, seat, req_name, req_id, dest, time.strftime("%H:%M"), mobile]
-                st.success("Booking Saved! The list has been updated for all devices.")
+                new_data = [str(travel_date), trip_type, selected_car, name_confirm, dest, time_val.strftime("%H:%M"), contact]
+                df_shared.loc[len(df_shared)] = new_data
+                st.success(f"Booking confirmed for {name_confirm}!")
                 st.rerun()
 
-# --- 4. LIVE MANIFEST ---
-st.subheader("📋 Current Live Passenger List")
-view_df = df_shared[df_shared['Date'] == str(sidebar_date)]
-if not view_df.empty:
-    st.dataframe(view_df[["Car", "Seat", "Name", "Time", "Destination", "Contact"]], use_container_width=True)
-else:
-    st.info("No bookings recorded for this date yet.")
+# --- 5. DEPARTMENTAL REPORTS ---
+st.divider()
+st.subheader("📊 Departmental Travel Report")
+tab1, tab2, tab3 = st.tabs(["Morning Pool", "Evening Late Sitting", "Random Office"])
 
-# --- 5. ADMIN RESET CONTROLS ---
-st.markdown("---")
-with st.expander("🔐 Admin Controls (Reset & Data Collection)"):
-    # Updated Password
-    pw = st.text_input("Enter Admin Password", type="password")
-    if pw == "Harish@1989#":
-        st.write("### Trip Management")
-        st.info("Resetting a vehicle will clear its seat list to allow a fresh round of 6 bookings.")
+with tab1:
+    st.dataframe(df_shared[df_shared['Trip Category'] == "Morning Pool Trip"], use_container_width=True)
+with tab2:
+    st.dataframe(df_shared[df_shared['Trip Category'] == "Evening Late Sitting Trip"], use_container_width=True)
+with tab3:
+    st.dataframe(df_shared[df_shared['Trip Category'] == "Random Office Booking"], use_container_width=True)
+
+# --- 6. ADMIN PORTAL ---
+st.divider()
+with st.expander("🔐 Admin Control Panel"):
+    admin_pw = st.text_input("Admin Password", type="password")
+    if admin_pw == "Harish@1989#": #
+        st.write("### Master Records (All Trips)")
+        st.dataframe(df_shared)
         
-        col_r1, col_r2 = st.columns(2)
-        with col_r1:
-            if st.button("Reset Ertiga 1 (New Trip)"):
-                indices = df_shared[(df_shared['Car'] == "Ertiga 1") & (df_shared['Date'] == str(sidebar_date))].index
-                df_shared.drop(indices, inplace=True)
-                st.success("Ertiga 1 reset successfully.")
+        col_res1, col_res2 = st.columns(2)
+        with col_res1:
+            if st.button("Reset Global Database"):
+                df_shared.drop(df_shared.index, inplace=True)
                 st.rerun()
-        with col_r2:
-            if st.button("Reset Ertiga 2 (New Trip)"):
-                indices = df_shared[(df_shared['Car'] == "Ertiga 2") & (df_shared['Date'] == str(sidebar_date))].index
-                df_shared.drop(indices, inplace=True)
-                st.success("Ertiga 2 reset successfully.")
-                st.rerun()
-
-        st.write("### Procurement Data Records")
-        csv = df_shared.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Master CSV for Excel", csv, f"cab_logs_{sidebar_date}.csv")
+        with col_res2:
+            csv = df_shared.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download Master Excel", csv, "P&C_Vehicle_Logs.csv")

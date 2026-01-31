@@ -13,8 +13,7 @@ st.markdown("#### Reliance Industries Limited - Jamnagar Refinery")
 # --- 1. SHARED DATABASE ---
 @st.cache_resource
 def get_global_database():
-    # Central storage for all departmental bookings
-    return pd.DataFrame(columns=["Date", "Trip Category", "Car", "Name", "Destination", "Time"])
+    return pd.DataFrame(columns=["Date", "Trip Category", "Car", "Main Passenger", "Accompanied By", "Destination", "Time"])
 
 df_shared = get_global_database()
 
@@ -35,48 +34,65 @@ staff_list = sorted(list(set([
     "Mahesh Bhaskar", "Rodi1 Choubisa", "Ketan Padh", "Samip Trivedi", "Upamanyu Mehta", 
     "Jignesh Shah", "Pradip Karia"
 ])))
+staff_list_with_guest = staff_list + ["External Guest"]
 
-# --- 3. BOOKING ENGINE (AT TOP) ---
+# --- 3. BOOKING ENGINE ---
 st.subheader("📝 New Booking")
-today = datetime.now().date()
-roster_dates = [today + timedelta(days=i) for i in range(7) if (today + timedelta(days=i)).weekday() < 6]
+now = datetime.now()
+today_str = now.strftime('%Y-%m-%d')
 
 col1, col2 = st.columns(2)
 
 with col1:
-    trip_type = st.radio("Trip Category", ["Morning Pool Trip", "Evening Late Sitting Trip", "Random Office Booking"])
+    trip_type = st.radio("Trip Category", ["Morning Pool Trip", "Evening Late Sitting Trip", "Ad-hoc Office Trip"])
     selected_car = st.selectbox("Select Car", ["Ertiga 1", "Ertiga 2"])
     
 with col2:
     if trip_type == "Morning Pool Trip":
-        # Advance booking allowed for Mon-Sat
-        travel_date = st.selectbox("Select Date (Mon-Sat Advance)", roster_dates)
+        roster_dates = [now.date() + timedelta(days=i) for i in range(7) if (now.date() + timedelta(days=i)).weekday() < 6]
+        travel_date = st.selectbox("Select Date (Advance)", roster_dates)
     else:
-        # Evening and Random trips are for the current day
-        travel_date = st.date_input("Travel Date", today)
+        # Fixed to today for Evening and Ad-hoc
+        travel_date = now.date()
+        st.info(f"Booking for Today: {today_str}")
+
+# Ad-hoc Companion Logic
+companions = "Alone"
+if trip_type == "Ad-hoc Office Trip":
+    travel_mode = st.selectbox("Traveling Alone or with others?", ["Alone", "With Team Member/Guest"])
+    if travel_mode == "With Team Member/Guest":
+        selected_companions = st.multiselect("Select who is accompanying you:", staff_list_with_guest)
+        companions = ", ".join(selected_companions) if selected_companions else "Alone"
 
 # Occupancy Check
 car_day_bookings = df_shared[(df_shared['Car'] == selected_car) & (df_shared['Date'] == str(travel_date))]
 if len(car_day_bookings) >= 6:
-    st.error(f"🚫 {selected_car} is FULL for {travel_date}.")
-    st.warning("⚠️ Contact Admin: **Samir Doshi (+91 90333 29720)** for arrangements.")
+    st.error(f"🚫 {selected_car} is FULL.")
+    st.warning("⚠️ Contact Admin: **Samir Doshi (+91 90333 29720)**.")
 else:
     with st.form("booking_form", clear_on_submit=True):
         c_a, c_b = st.columns(2)
         with c_a:
-            p_name = st.selectbox("Select Name*", staff_list)
+            p_name = st.selectbox("Your Name (Main Passenger)*", staff_list)
         with c_b:
-            time_val = st.time_input("Departure Time*", datetime.now().time())
+            # Evening trip time logic
+            default_time = now.time() if trip_type != "Evening Late Sitting Trip" else datetime.strptime("19:00", "%H:%M").time()
+            time_val = st.time_input("Departure Time*", default_time)
             dest = st.text_input("Destination*")
             
-        if st.form_submit_button("Confirm Booking"):
-            # Evening Time Constraint: Post 7 PM
-            if trip_type == "Evening Late Sitting Trip" and time_val < datetime.strptime("19:00", "%H:%M").time():
-                st.error("Evening pool trips must start at or after 07:00 PM.")
+        submit = st.form_submit_button("Confirm Booking")
+
+        if submit:
+            # Strict evening time check
+            is_evening = (trip_type == "Evening Late Sitting Trip")
+            evening_time_valid = time_val >= datetime.strptime("19:00", "%H:%M").time()
+            
+            if is_evening and not evening_time_valid:
+                st.error("Evening Late Sitting trips can only be booked for departures at or after 07:00 PM.")
             elif not dest:
                 st.error("Please provide a Destination.")
             else:
-                new_row = [str(travel_date), trip_type, selected_car, p_name, dest, time_val.strftime("%H:%M")]
+                new_row = [str(travel_date), trip_type, selected_car, p_name, companions, dest, time_val.strftime("%H:%M")]
                 df_shared.loc[len(df_shared)] = new_row
                 st.success(f"Booking confirmed for {p_name}!")
                 st.rerun()
@@ -84,34 +100,27 @@ else:
 # --- 4. LIVE MANIFEST ---
 st.divider()
 st.subheader("📊 Live Travel Manifest")
-view_date = st.date_input("View manifest for date:", today)
-# Filters by Date and removes mobile column
+view_date = st.date_input("View manifest for date:", now.date())
 st.dataframe(df_shared[df_shared['Date'] == str(view_date)], use_container_width=True)
 
 # --- 5. WEEKLY ROSTER VIEW (AT BOTTOM) ---
 st.divider()
-st.subheader("📅 Weekly Trip Roster")
+st.subheader("📅 Weekly Trip Occupancy")
 roster_data = []
+roster_dates_view = [now.date() + timedelta(days=i) for i in range(7) if (now.date() + timedelta(days=i)).weekday() < 6]
 
-for d in roster_dates:
+for d in roster_dates_view:
     d_str = str(d)
     e1_count = len(df_shared[(df_shared['Car'] == "Ertiga 1") & (df_shared['Date'] == d_str)])
     e2_count = len(df_shared[(df_shared['Car'] == "Ertiga 2") & (df_shared['Date'] == d_str)])
-    roster_data.append({
-        "Day": d.strftime("%A"), 
-        "Date": d_str, 
-        "Ertiga 1 (Booked/6)": f"{e1_count}/6", 
-        "Ertiga 2 (Booked/6)": f"{e2_count}/6"
-    })
+    roster_data.append({"Day": d.strftime("%A"), "Date": d_str, "Ertiga 1": f"{e1_count}/6", "Ertiga 2": f"{e2_count}/6"})
 
 st.table(pd.DataFrame(roster_data))
 
 # --- 6. ADMIN PORTAL ---
 with st.expander("🔐 Admin Controls"):
-    # Admin password set for CHO P&C
     if st.text_input("Admin Password", type="password") == "Harish@1989#":
-        if st.button("Clear All Records"):
+        if st.button("Clear All Data"):
             df_shared.drop(df_shared.index, inplace=True)
             st.rerun()
-        csv = df_shared.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Master CSV", csv, "CHO_PC_Logs.csv")
+        st.download_button("📥 Download Excel", df_shared.to_csv(index=False).encode('utf-8'), "CHO_PC_Logs.csv")

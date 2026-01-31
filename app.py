@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="P&C CHO Vehicle Portal", layout="wide")
 
 # --- BRANDING: RIL LOGO ---
-# Using a standard RIL logo URL for the header
 st.image("https://upload.wikimedia.org/wikipedia/en/thumb/9/99/Reliance_Industries_Logo.svg/1200px-Reliance_Industries_Logo.svg.png", width=200)
 st.title("🚗 P&C - CHO Departmental Vehicle Portal")
 st.markdown("#### Reliance Industries Limited - Jamnagar Refinery")
@@ -14,8 +13,8 @@ st.markdown("#### Reliance Industries Limited - Jamnagar Refinery")
 # --- 1. SHARED DATABASE ---
 @st.cache_resource
 def get_global_database():
-    # Central storage shared across all office devices
-    return pd.DataFrame(columns=["Date", "Trip Category", "Car", "Name", "Destination", "Time", "Contact"])
+    # Central storage for all departmental bookings
+    return pd.DataFrame(columns=["Date", "Trip Category", "Car", "Name", "Destination", "Time"])
 
 df_shared = get_global_database()
 
@@ -50,8 +49,10 @@ with col1:
     
 with col2:
     if trip_type == "Morning Pool Trip":
+        # Advance booking allowed for Mon-Sat
         travel_date = st.selectbox("Select Date (Mon-Sat Advance)", roster_dates)
     else:
+        # Evening and Random trips are for the current day
         travel_date = st.date_input("Travel Date", today)
 
 # Occupancy Check
@@ -64,19 +65,18 @@ else:
         c_a, c_b = st.columns(2)
         with c_a:
             p_name = st.selectbox("Select Name*", staff_list)
-            contact = st.text_input("Mobile Number*")
         with c_b:
             time_val = st.time_input("Departure Time*", datetime.now().time())
             dest = st.text_input("Destination*")
             
         if st.form_submit_button("Confirm Booking"):
-            # Evening Time Constraint
+            # Evening Time Constraint: Post 7 PM
             if trip_type == "Evening Late Sitting Trip" and time_val < datetime.strptime("19:00", "%H:%M").time():
                 st.error("Evening pool trips must start at or after 07:00 PM.")
-            elif not contact or not dest:
-                st.error("Please fill all mandatory fields (*).")
+            elif not dest:
+                st.error("Please provide a Destination.")
             else:
-                new_row = [str(travel_date), trip_type, selected_car, p_name, dest, time_val.strftime("%H:%M"), contact]
+                new_row = [str(travel_date), trip_type, selected_car, p_name, dest, time_val.strftime("%H:%M")]
                 df_shared.loc[len(df_shared)] = new_row
                 st.success(f"Booking confirmed for {p_name}!")
                 st.rerun()
@@ -85,6 +85,7 @@ else:
 st.divider()
 st.subheader("📊 Live Travel Manifest")
 view_date = st.date_input("View manifest for date:", today)
+# Filters by Date and removes mobile column
 st.dataframe(df_shared[df_shared['Date'] == str(view_date)], use_container_width=True)
 
 # --- 5. WEEKLY ROSTER VIEW (AT BOTTOM) ---
@@ -107,9 +108,10 @@ st.table(pd.DataFrame(roster_data))
 
 # --- 6. ADMIN PORTAL ---
 with st.expander("🔐 Admin Controls"):
+    # Admin password set for CHO P&C
     if st.text_input("Admin Password", type="password") == "Harish@1989#":
-        if st.button("Clear All Global History"):
+        if st.button("Clear All Records"):
             df_shared.drop(df_shared.index, inplace=True)
             st.rerun()
         csv = df_shared.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Master Record", csv, "CHO_P&C_Vehicle_Logs.csv")
+        st.download_button("📥 Download Master CSV", csv, "CHO_PC_Logs.csv")
